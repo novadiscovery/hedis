@@ -24,13 +24,14 @@ import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as LB
 import qualified Data.IORef as IOR
 import Control.Concurrent.MVar(newMVar, readMVar, swapMVar)
-import Control.Exception(bracketOnError, Exception, throwIO, try)
+import Control.Exception(bracketOnError, Exception, throwIO, try, displayException, SomeException)
 import           Data.Typeable
 import Data.Functor(void)
 import qualified Network.Socket as NS
 import qualified Network.TLS as TLS
 import System.IO(Handle, hSetBinaryMode, hClose, IOMode(..), hFlush, hIsOpen)
 import System.IO.Error(catchIOError)
+import Control.Monad.Catch (catch)
 
 data ConnectionContext = NormalHandle Handle | TLSContext TLS.Context
 
@@ -94,7 +95,9 @@ connect hostName portId timeoutOpt =
               UnixSocket addr -> bracketOnError
                 (NS.socket NS.AF_UNIX NS.Stream NS.defaultProtocol)
                 NS.close
-                (\sock -> NS.connect sock (NS.SockAddrUnix addr) >> return sock)
+                (\sock -> NS.connect sock (NS.SockAddrUnix addr) >> return sock `catch` (\e -> 
+                  error ("Could not connect to '" ++ addr ++ "': " ++ displayException (e :: SomeException))
+                ))
 
 getHostAddrInfo :: NS.HostName -> NS.PortNumber -> IO [NS.AddrInfo]
 getHostAddrInfo hostname port =
@@ -106,6 +109,7 @@ getHostAddrInfo hostname port =
 errConnectTimeout :: ConnectPhase -> IO a
 errConnectTimeout phase = throwIO $ ConnectTimeout phase
 
+-- only used inet addresses
 connectSocket :: [NS.AddrInfo] -> IO NS.Socket
 connectSocket [] = error "connectSocket: unexpected empty list"
 connectSocket (addr:rest) = tryConnect >>= \case
