@@ -95,9 +95,10 @@ connect hostName portId timeoutOpt =
               UnixSocket addr -> bracketOnError
                 (NS.socket NS.AF_UNIX NS.Stream NS.defaultProtocol)
                 NS.close
-                (\sock -> NS.connect sock (NS.SockAddrUnix addr) >> return sock `catch` (\e -> 
+                (\sock -> NS.connect sock (NS.SockAddrUnix addr) >> return sock )
+                `catch` (\e -> 
                   error ("Could not connect to '" ++ addr ++ "': " ++ displayException (e :: SomeException))
-                ))
+                )
 
 getHostAddrInfo :: NS.HostName -> NS.PortNumber -> IO [NS.AddrInfo]
 getHostAddrInfo hostname port =
