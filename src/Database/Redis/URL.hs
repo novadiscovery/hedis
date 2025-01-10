@@ -1,4 +1,5 @@
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE OverloadedStrings #-}
 module Database.Redis.URL
     ( parseConnectInfo
     ) where
@@ -15,6 +16,7 @@ import Database.Redis.Connection (ConnectInfo(..), defaultConnectInfo)
 import qualified Database.Redis.ConnectionContext as CC
 import Network.HTTP.Base
 import Network.URI (parseURI, uriPath, uriScheme)
+import Network.TLS (defaultParamsClient)
 import Text.Read (readMaybe)
 
 import qualified Data.ByteString.Char8 as C8
@@ -43,7 +45,8 @@ import qualified Data.ByteString.Char8 as C8
 parseConnectInfo :: String -> Either String ConnectInfo
 parseConnectInfo url = do
     uri <- note "Invalid URI" $ parseURI url
-    note "Wrong scheme" $ guard $ uriScheme uri == "redis:"
+    let userScheme = uriScheme uri
+    note ("Wrong scheme " ++ userScheme) $ guard $ userScheme == "redis:" || userScheme == tlsScheme
     uriAuth <- note "Missing or invalid Authority"
         $ parseURIAuthority
         $ uriToAuthorityString uri
@@ -55,11 +58,18 @@ parseConnectInfo url = do
       then return $ connectDatabase defaultConnectInfo
       else note ("Invalid port: " <> dbNumPart) $ readMaybe dbNumPart
 
-    return defaultConnectInfo
-        { connectHost = if null h
+    let finalHost = if null h
             then connectHost defaultConnectInfo
             else h
+
+    return defaultConnectInfo
+        { connectHost = finalHost
         , connectPort = maybe (connectPort defaultConnectInfo) (CC.PortNumber . fromIntegral) (port uriAuth)
         , connectAuth = C8.pack <$> password uriAuth
         , connectDatabase = db
+        , connectTLSParams = case userScheme == tlsScheme of
+             False -> Nothing
+             True -> Just $ defaultParamsClient finalHost ""
         }
+    where
+          tlsScheme = "rediss:"
